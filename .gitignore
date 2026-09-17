@@ -1,0 +1,20 @@
+bin/
+tmp/
+coverage.out
+*.test
+.env
+.env.local
+*.log
+coverage/
+.DS_Store
+.vscode/
+.idea/
+testdata/photos/
+*.mp4
+# ---- cc-pairwise 建仓补齐：依赖目录不该进仓库 ----
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+target/

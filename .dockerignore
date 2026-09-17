@@ -1,0 +1,16 @@
+bin
+tmp
+.cache
+coverage.out
+.git
+.gitignore
+.env
+.env.*
+*.log
+coverage
+.vscode
+.idea
+Dockerfile
+docker-compose.yml
+README.md
+testdata/photos/
