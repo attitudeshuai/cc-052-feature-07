@@ -35,7 +35,8 @@ POST /api/v1/plots                          地块登记
 POST /api/v1/batches                        创建种植批次
 POST /api/v1/batches/{id}/activities        农事记录（支持数组批量，client_uuid 幂等）
 POST /api/v1/batches/{id}/inspection        上传检测结果
-POST /api/v1/batches/{id}/codes             生成溯源码（返回数量与短码列表）
+POST /api/v1/batches/{id}/codes             生成溯源码（返回实际落库数量、短码列表与撞重跳过明细）
+GET  /api/v1/batches/{id}/codes/stats       发码对账（已落库数/最大序号/缺号/重号，数量对不上时可查）
 GET  /api/v1/trace/{code}                   公开溯源查询（无需鉴权，限流）
 GET  /api/v1/trace/{code}/qrcode            返回二维码 PNG（带缓存头）
 ```

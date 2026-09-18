@@ -29,12 +29,27 @@ func (h *TraceCodeHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	codes, err := h.svc.GenerateCodes(batchID, req.Count)
+	result, err := h.svc.GenerateCodes(batchID, req.Count)
 	if err != nil {
 		response.Forbidden(c, err.Error())
 		return
 	}
-	response.Created(c, gin.H{"codes": codes, "count": len(codes)})
+	response.Created(c, result)
+}
+
+func (h *TraceCodeHandler) Stats(c *gin.Context) {
+	batchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid batch id")
+		return
+	}
+
+	stats, err := h.svc.GetCodeStats(batchID)
+	if err != nil {
+		response.NotFound(c, err.Error())
+		return
+	}
+	response.Success(c, stats)
 }
 
 func (h *TraceCodeHandler) Trace(c *gin.Context) {

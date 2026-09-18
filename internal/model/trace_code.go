@@ -17,6 +17,25 @@ type GenerateCodeRequest struct {
 	Count int `json:"count" binding:"required,min=1,max=1000"`
 }
 
+// GenerateCodesResult 一次发码的结果：以实际落库为准，撞重跳过的单独列出。
+type GenerateCodesResult struct {
+	Codes        []string `json:"codes"`                   // 实际落库的码
+	Count        int      `json:"count"`                   // 实际发出条数（= 落库行数）
+	Skipped      int      `json:"skipped"`                 // 撞唯一约束被跳过的条数
+	SkippedCodes []string `json:"skipped_codes,omitempty"` // 被跳过的码
+}
+
+// TraceCodeStats 批次发码对账：已分配序号 vs 实际落库，对不上时能查出来。
+type TraceCodeStats struct {
+	BatchID       int64 `json:"batch_id"`
+	Issued        int   `json:"issued"`                 // trace_code 实际行数
+	MaxSeq        int   `json:"max_seq"`                // 已分配的最大序号
+	Gaps          int   `json:"gaps"`                   // 序号被分配但未落库的个数
+	DuplicateSeqs int   `json:"duplicate_seqs"`         // 同一序号重复占用的条数
+	Consistent    bool  `json:"consistent"`             // 落库数 == 最大序号 且无重号
+	MissingSeqs   []int `json:"missing_seqs,omitempty"` // 缺号明细（最多 100 条）
+}
+
 type TraceResponse struct {
 	Code       string              `json:"code"`
 	Batch      *TraceBatchInfo     `json:"batch"`

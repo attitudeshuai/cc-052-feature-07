@@ -34,7 +34,7 @@ func NewTraceCodeService(
 	}
 }
 
-func (s *TraceCodeService) GenerateCodes(batchID int64, count int) ([]string, error) {
+func (s *TraceCodeService) GenerateCodes(batchID int64, count int) (*model.GenerateCodesResult, error) {
 	// Check batch exists
 	batch, err := s.batchRepo.GetByID(batchID)
 	if err != nil {
@@ -58,42 +58,28 @@ func (s *TraceCodeService) GenerateCodes(batchID int64, count int) ([]string, er
 		return nil, fmt.Errorf("safety interval check failed: %s", msg)
 	}
 
-	// Get max seq
-	maxSeq, err := s.codeRepo.GetMaxSeqByBatch(batchID)
+	// 取号与插入在同一事务内完成，同一批次的并发请求串行执行
+	inserted, skipped, err := s.codeRepo.IssueCodes(batchID, count, func(seq int64) string {
+		return tracecode.Generate(seq)
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("issue codes: %w", err)
 	}
 
-	// Generate codes in batch of 1000
-	var allCodes []string
-	batchSize := 1000
-	for i := 0; i < count; i += batchSize {
-		end := i + batchSize
-		if end > count {
-			end = count
-		}
-		size := end - i
+	return &model.GenerateCodesResult{
+		Codes:        inserted,
+		Count:        len(inserted),
+		Skipped:      len(skipped),
+		SkippedCodes: skipped,
+	}, nil
+}
 
-		var codes []model.TraceCode
-		var codeStrings []string
-		for j := 0; j < size; j++ {
-			seq := int64(maxSeq + i + j + 1)
-			code := tracecode.Generate(seq)
-			codes = append(codes, model.TraceCode{
-				BatchID: batchID,
-				Code:    code,
-				Seq:     int(seq),
-			})
-			codeStrings = append(codeStrings, code)
-		}
-
-		if err := s.codeRepo.BatchInsert(codes); err != nil {
-			return nil, fmt.Errorf("batch insert codes: %w", err)
-		}
-		allCodes = append(allCodes, codeStrings...)
+// GetCodeStats 发码对账：已发序号与实际落库是否一致，对不上时给出缺号/重号明细。
+func (s *TraceCodeService) GetCodeStats(batchID int64) (*model.TraceCodeStats, error) {
+	if _, err := s.batchRepo.GetByID(batchID); err != nil {
+		return nil, fmt.Errorf("batch not found: %w", err)
 	}
-
-	return allCodes, nil
+	return s.codeRepo.StatsByBatch(batchID)
 }
 
 func (s *TraceCodeService) Trace(code string, region string) (*model.TraceResponse, error) {
