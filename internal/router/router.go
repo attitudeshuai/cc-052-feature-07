@@ -51,6 +51,7 @@ func Setup(
 
 		// Trace codes
 		v1.POST("/batches/:id/codes", traceCodeH.Generate)
+		v1.GET("/batches/:id/codes/stats", traceCodeH.Stats)
 	}
 
 	// Public trace endpoints with rate limiting

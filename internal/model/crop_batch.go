@@ -18,6 +18,7 @@ type CropBatch struct {
 	HarvestDate     *time.Time  `db:"harvest_date" json:"harvest_date,omitempty"`
 	ExpectedYieldKg float64     `db:"expected_yield_kg" json:"expected_yield_kg"`
 	Status          BatchStatus `db:"status" json:"status"`
+	CodeQuota       *int        `db:"code_quota" json:"code_quota,omitempty"`
 	CreatedAt       time.Time   `db:"created_at" json:"created_at"`
 }
 
@@ -27,4 +28,5 @@ type CreateBatchRequest struct {
 	SowingDate      string  `json:"sowing_date" binding:"required"`
 	HarvestDate     string  `json:"harvest_date"`
 	ExpectedYieldKg float64 `json:"expected_yield_kg" binding:"required"`
+	CodeQuota       *int    `json:"code_quota" binding:"omitempty,min=1"`
 }

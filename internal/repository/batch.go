@@ -16,16 +16,28 @@ func NewBatchRepo(db *sqlx.DB) *BatchRepo {
 }
 
 func (r *BatchRepo) Create(b *model.CropBatch) error {
-	query := `INSERT INTO crop_batch (plot_id, crop_id, sowing_date, harvest_date, expected_yield_kg, status) 
-	          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`
-	return r.db.QueryRow(query, b.PlotID, b.CropID, b.SowingDate, b.HarvestDate, b.ExpectedYieldKg, b.Status).
+	query := `INSERT INTO crop_batch (plot_id, crop_id, sowing_date, harvest_date, expected_yield_kg, status, code_quota)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`
+	return r.db.QueryRow(query, b.PlotID, b.CropID, b.SowingDate, b.HarvestDate, b.ExpectedYieldKg, b.Status, b.CodeQuota).
 		Scan(&b.ID, &b.CreatedAt)
 }
 
 func (r *BatchRepo) GetByID(id int64) (*model.CropBatch, error) {
 	var b model.CropBatch
-	query := `SELECT id, plot_id, crop_id, sowing_date, harvest_date, expected_yield_kg, status, created_at FROM crop_batch WHERE id = $1`
+	query := `SELECT id, plot_id, crop_id, sowing_date, harvest_date, expected_yield_kg, status, code_quota, created_at FROM crop_batch WHERE id = $1`
 	if err := r.db.Get(&b, query, id); err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+// GetByIDForUpdate locks the batch row until the transaction ends. Code
+// generation for a batch must go through this so concurrent generators
+// serialize on the row lock instead of reading the same max seq.
+func (r *BatchRepo) GetByIDForUpdate(tx *sqlx.Tx, id int64) (*model.CropBatch, error) {
+	var b model.CropBatch
+	query := `SELECT id, plot_id, crop_id, sowing_date, harvest_date, expected_yield_kg, status, code_quota, created_at FROM crop_batch WHERE id = $1 FOR UPDATE`
+	if err := tx.Get(&b, query, id); err != nil {
 		return nil, err
 	}
 	return &b, nil

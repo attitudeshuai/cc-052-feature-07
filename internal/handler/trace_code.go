@@ -34,7 +34,24 @@ func (h *TraceCodeHandler) Generate(c *gin.Context) {
 		response.Forbidden(c, err.Error())
 		return
 	}
-	response.Created(c, gin.H{"codes": codes, "count": len(codes)})
+	response.Created(c, codes)
+}
+
+// Stats returns the per-batch reconciliation view: persisted count, highest
+// consumed seq, the gap between them and the remaining quota.
+func (h *TraceCodeHandler) Stats(c *gin.Context) {
+	batchID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid batch id")
+		return
+	}
+
+	stats, err := h.svc.GetCodeStats(batchID)
+	if err != nil {
+		response.NotFound(c, err.Error())
+		return
+	}
+	response.Success(c, stats)
 }
 
 func (h *TraceCodeHandler) Trace(c *gin.Context) {

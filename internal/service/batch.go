@@ -36,6 +36,7 @@ func (s *BatchService) Create(req *model.CreateBatchRequest) (*model.CropBatch, 
 		HarvestDate:     harvestDate,
 		ExpectedYieldKg: req.ExpectedYieldKg,
 		Status:          model.BatchStatusGrowing,
+		CodeQuota:       req.CodeQuota,
 	}
 	if err := s.repo.Create(b); err != nil {
 		return nil, err

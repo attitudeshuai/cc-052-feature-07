@@ -34,7 +34,11 @@ func NewTraceCodeService(
 	}
 }
 
-func (s *TraceCodeService) GenerateCodes(batchID int64, count int) ([]string, error) {
+func (s *TraceCodeService) GenerateCodes(batchID int64, count int) (*model.GenerateCodeResult, error) {
+	if count <= 0 {
+		return nil, fmt.Errorf("count must be positive")
+	}
+
 	// Check batch exists
 	batch, err := s.batchRepo.GetByID(batchID)
 	if err != nil {
@@ -58,42 +62,111 @@ func (s *TraceCodeService) GenerateCodes(batchID int64, count int) ([]string, er
 		return nil, fmt.Errorf("safety interval check failed: %s", msg)
 	}
 
-	// Get max seq
-	maxSeq, err := s.codeRepo.GetMaxSeqByBatch(batchID)
+	// Serialize generators of the same batch on the batch row lock: a
+	// concurrent request blocks in GetByIDForUpdate until this transaction
+	// commits, then reads the new max seq and gets the NEXT segment.
+	// One number segment is handed out exactly once.
+	tx, err := s.codeRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	lockedBatch, err := s.batchRepo.GetByIDForUpdate(tx, batchID)
+	if err != nil {
+		return nil, fmt.Errorf("lock batch: %w", err)
+	}
+	if lockedBatch.Status == model.BatchStatusLocked {
+		return nil, fmt.Errorf("batch is locked, cannot generate codes")
+	}
+
+	// Quota check while the lock is held: reject requests that would exceed
+	// the remaining quota instead of silently issuing a partial batch.
+	if lockedBatch.CodeQuota != nil {
+		issued, err := s.codeRepo.CountByBatchTx(tx, batchID)
+		if err != nil {
+			return nil, err
+		}
+		remaining := *lockedBatch.CodeQuota - issued
+		if count > remaining {
+			return nil, fmt.Errorf("剩余可发数量不足：剩余 %d，请求 %d", remaining, count)
+		}
+	}
+
+	maxSeq, err := s.codeRepo.GetMaxSeqByBatchTx(tx, batchID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Generate codes in batch of 1000
-	var allCodes []string
-	batchSize := 1000
-	for i := 0; i < count; i += batchSize {
-		end := i + batchSize
-		if end > count {
-			end = count
-		}
-		size := end - i
-
-		var codes []model.TraceCode
-		var codeStrings []string
-		for j := 0; j < size; j++ {
-			seq := int64(maxSeq + i + j + 1)
-			code := tracecode.Generate(seq)
-			codes = append(codes, model.TraceCode{
-				BatchID: batchID,
-				Code:    code,
-				Seq:     int(seq),
-			})
-			codeStrings = append(codeStrings, code)
-		}
-
-		if err := s.codeRepo.BatchInsert(codes); err != nil {
-			return nil, fmt.Errorf("batch insert codes: %w", err)
-		}
-		allCodes = append(allCodes, codeStrings...)
+	codes := make([]model.TraceCode, 0, count)
+	for i := 0; i < count; i++ {
+		seq := maxSeq + i + 1
+		codes = append(codes, model.TraceCode{
+			BatchID: batchID,
+			Code:    tracecode.Generate(int64(seq)),
+			Seq:     seq,
+		})
 	}
 
-	return allCodes, nil
+	inserted, skipped, err := s.codeRepo.BatchInsertTx(tx, codes)
+	if err != nil {
+		return nil, fmt.Errorf("batch insert codes: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit codes: %w", err)
+	}
+
+	// Report what actually landed in the database: Codes/Inserted only
+	// contain persisted rows, duplicates skipped on conflict are listed
+	// separately in SkippedCodes.
+	result := &model.GenerateCodeResult{
+		BatchID:   batchID,
+		Requested: count,
+		Inserted:  len(inserted),
+		Skipped:   len(skipped),
+		Codes:     make([]string, 0, len(inserted)),
+	}
+	for _, tc := range inserted {
+		result.Codes = append(result.Codes, tc.Code)
+	}
+	if len(skipped) > 0 {
+		result.SkippedCodes = make([]model.SkippedCode, 0, len(skipped))
+		for _, tc := range skipped {
+			result.SkippedCodes = append(result.SkippedCodes, model.SkippedCode{Seq: tc.Seq, Code: tc.Code})
+		}
+	}
+	return result, nil
+}
+
+// GetCodeStats returns the per-batch reconciliation view: how many codes
+// are actually persisted, the highest seq consumed, the gap between the
+// two (consumed but never persisted) with the missing seq numbers, and
+// the remaining quota when one is set.
+func (s *TraceCodeService) GetCodeStats(batchID int64) (*model.CodeStats, error) {
+	batch, err := s.batchRepo.GetByID(batchID)
+	if err != nil {
+		return nil, fmt.Errorf("batch not found: %w", err)
+	}
+
+	issued, maxSeq, missing, err := s.codeRepo.GetSeqStats(batchID)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &model.CodeStats{
+		BatchID:     batchID,
+		Issued:      issued,
+		MaxSeq:      maxSeq,
+		Gap:         maxSeq - issued,
+		MissingSeqs: missing,
+		Quota:       batch.CodeQuota,
+	}
+	if batch.CodeQuota != nil {
+		remaining := *batch.CodeQuota - issued
+		stats.Remaining = &remaining
+	}
+	return stats, nil
 }
 
 func (s *TraceCodeService) Trace(code string, region string) (*model.TraceResponse, error) {

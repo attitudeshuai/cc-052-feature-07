@@ -17,6 +17,38 @@ type GenerateCodeRequest struct {
 	Count int `json:"count" binding:"required,min=1,max=1000"`
 }
 
+// SkippedCode is a generated code that was not persisted because it
+// conflicted with an existing row (unique index on code).
+type SkippedCode struct {
+	Seq  int    `json:"seq"`
+	Code string `json:"code"`
+}
+
+// GenerateCodeResult reports what actually landed in the database:
+// Codes/Inserted contain only rows that were persisted; duplicates that
+// were skipped on conflict are listed separately in SkippedCodes.
+type GenerateCodeResult struct {
+	BatchID      int64         `json:"batch_id"`
+	Requested    int           `json:"requested"`
+	Inserted     int           `json:"inserted"`
+	Skipped      int           `json:"skipped"`
+	Codes        []string      `json:"codes"`
+	SkippedCodes []SkippedCode `json:"skipped_codes,omitempty"`
+}
+
+// CodeStats is the per-batch reconciliation view. Gap = MaxSeq - Issued;
+// a non-zero Gap means seq numbers were consumed but never persisted.
+// Remaining is nil when the batch has no quota.
+type CodeStats struct {
+	BatchID     int64 `json:"batch_id"`
+	Issued      int   `json:"issued"`
+	MaxSeq      int   `json:"max_seq"`
+	Gap         int   `json:"gap"`
+	MissingSeqs []int `json:"missing_seqs,omitempty"`
+	Quota       *int  `json:"quota"`
+	Remaining   *int  `json:"remaining"`
+}
+
 type TraceResponse struct {
 	Code       string              `json:"code"`
 	Batch      *TraceBatchInfo     `json:"batch"`

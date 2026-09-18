@@ -35,7 +35,8 @@ POST /api/v1/plots                          地块登记
 POST /api/v1/batches                        创建种植批次
 POST /api/v1/batches/{id}/activities        农事记录（支持数组批量，client_uuid 幂等）
 POST /api/v1/batches/{id}/inspection        上传检测结果
-POST /api/v1/batches/{id}/codes             生成溯源码（返回数量与短码列表）
+POST /api/v1/batches/{id}/codes             生成溯源码（返回实际落库数量、短码列表与跳过明细）
+GET  /api/v1/batches/{id}/codes/stats       发码对账（已发/最大序号/断号清单/配额剩余）
 GET  /api/v1/trace/{code}                   公开溯源查询（无需鉴权，限流）
 GET  /api/v1/trace/{code}/qrcode            返回二维码 PNG（带缓存头）
 ```
@@ -44,7 +45,7 @@ GET  /api/v1/trace/{code}/qrcode            返回二维码 PNG（带缓存头�
 ```sql
 farm(id, name, region_code, contact_ref, cert_no)
 plot(id, farm_id, name, area_mu, geojson /* 简化多边形 */, soil_type)
-crop_batch(id, plot_id, crop_id, sowing_date, harvest_date, expected_yield_kg, status /* growing|harvested|locked */)
+crop_batch(id, plot_id, crop_id, sowing_date, harvest_date, expected_yield_kg, status /* growing|harvested|locked */, code_quota /* 可空，发码配额 */)
 activity(id, batch_id, client_uuid UNIQUE, kind /* fertilize|pesticide|irrigation|weed */, happened_at,
          input_id, dose, dose_unit, operator, photos jsonb, geo, created_at)
 input_material(id, name, type, registration_no, safe_interval_days, active_ingredient)
